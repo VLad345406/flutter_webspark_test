@@ -20,6 +20,7 @@ class LoadingScreen extends StatefulWidget {
 
 class _LoadingScreenState extends State<LoadingScreen> {
   double _progress = 0.0;
+  bool _isButtonEnabled = true;
 
   @override
   void initState() {
@@ -33,9 +34,14 @@ class _LoadingScreenState extends State<LoadingScreen> {
       final streamedResponse = await request.send();
 
       if (streamedResponse.statusCode == 200) {
+        String contentType = streamedResponse.headers['content-type'] ?? '';
+        //check contentType == json
+        if (!contentType.contains('application/json')) {
+          throw FormatException('Unexpected content type: $contentType');
+        }
+
         int totalBytes = streamedResponse.contentLength ?? 0;
         int receivedBytes = 0;
-
         final completer = Completer<void>();
         final List<int> responseData = [];
 
@@ -50,14 +56,17 @@ class _LoadingScreenState extends State<LoadingScreen> {
           },
           onDone: () {
             completer.complete();
-            final responseBody = utf8.decode(responseData);
-
-            final paths = JsonResponseParse.processJson(responseBody);
-            Provider.of<ProviderState>(
-              context,
-              listen: false,
-            ).setPaths(pths: paths);
-            snackBar(context, 'Success get response');
+            try {
+              final responseBody = utf8.decode(responseData);
+              final paths = JsonResponseParse.processJson(responseBody);
+              Provider.of<ProviderState>(
+                context,
+                listen: false,
+              ).setPaths(pths: paths);
+              snackBar(context, 'Success get response');
+            } catch (e) {
+              snackBar(context, 'Error parsing response: $e');
+            }
           },
           onError: (error) {
             completer.completeError(error);
@@ -118,7 +127,10 @@ class _LoadingScreenState extends State<LoadingScreen> {
               ? TaskButton(
                 textButton: 'Send results to server',
                 function: () {
-                  sendResultToServer(context, appState.paths, widget.url);
+                  _isButtonEnabled
+                      ? sendResultToServer(context, appState.paths, widget.url)
+                      : null;
+                  _isButtonEnabled = false;
                 },
               )
               : Container(),
